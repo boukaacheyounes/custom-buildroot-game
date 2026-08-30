@@ -1,0 +1,66 @@
+name: Build Buildroot
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev rsync bc unzip cpio python3 file wget libelf-dev git
+
+      - name: Download Buildroot
+        run: |
+          wget -q -O buildroot-2026.08-rc2.tar.gz https://buildroot.org/downloads/buildroot-2026.08-rc2.tar.gz
+          tar xzf buildroot-2026.08-rc2.tar.gz
+          mv buildroot-2026.08-rc2 buildroot
+
+      - name: Inject defconfig
+        run: |
+          if [ ! -f configs/custom_defconfig ]; then
+            echo "configs/custom_defconfig not found" >&2
+            exit 1
+          fi
+          cp configs/custom_defconfig buildroot/.config
+
+      - name: Inject rootfs overlay
+        run: |
+          mkdir -p buildroot/board/custom_game/rootfs_overlay
+          if [ -d overlay ]; then
+            cp -a overlay/. buildroot/board/custom_game/rootfs_overlay/
+          else
+            echo "overlay/ not found; continuing without overlay"
+          fi
+
+      - name: Prepare Buildroot
+        working-directory: buildroot
+        run: |
+          make olddefconfig
+
+      - name: Build
+        working-directory: buildroot
+        run: |
+          make -j$(nproc)
+
+      - name: List resulting images
+        run: |
+          ls -lah buildroot/output/images || true
+
+      - name: Upload images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildroot-images
+          path: |
+            buildroot/output/images/bzImage
+            buildroot/output/images/rootfs.ext4
+            buildroot/output/images/*.iso
