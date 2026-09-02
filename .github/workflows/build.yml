@@ -32,9 +32,11 @@ jobs:
 
       - name: Download Buildroot
         run: |
+          rm -rf buildroot buildroot-*.tar.gz buildroot-*
           wget -q -O buildroot-2026.08-rc2.tar.gz https://buildroot.org/downloads/buildroot-2026.08-rc2.tar.gz
           tar xzf buildroot-2026.08-rc2.tar.gz
           mv buildroot-2026.08-rc2 buildroot
+          ls -la buildroot/ | head -5
 
       - name: Inject defconfig
         run: |
