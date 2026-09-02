@@ -52,10 +52,12 @@ jobs:
           else
             echo "overlay/ not found; continuing without overlay"
           fi
+         ls -la buildroot/ | head -10
 
       - name: Build
         working-directory: buildroot
         run: |
+          ls -la
           make -j$(nproc)
 
       - name: List resulting images
