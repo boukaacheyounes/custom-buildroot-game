@@ -51,12 +51,7 @@ jobs:
             cp -a overlay/. buildroot/board/custom_game/rootfs_overlay/
           else
             echo "overlay/ not found; continuing without overlay"
-          fi
-
-      - name: Prepare Buildroot
-        working-directory: buildroot
-        run: |
-          make oldconfig
+         fi
 
       - name: Build
         working-directory: buildroot
