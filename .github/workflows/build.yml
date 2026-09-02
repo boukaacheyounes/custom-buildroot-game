@@ -52,7 +52,8 @@ jobs:
           else
             echo "overlay/ not found; continuing without overlay"
           fi
-         ls -la buildroot/ | head -10
+          echo "=== Buildroot directory content ===" 
+          ls -la buildroot/ | head -10
 
       - name: Build
         working-directory: buildroot
