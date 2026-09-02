@@ -56,7 +56,7 @@ jobs:
       - name: Prepare Buildroot
         working-directory: buildroot
         run: |
-          make olddefconfig
+          make oldconfig
 
       - name: Build
         working-directory: buildroot
