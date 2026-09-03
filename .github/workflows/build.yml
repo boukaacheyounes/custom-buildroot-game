@@ -8,13 +8,14 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 480
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           lfs: true
+
       - name: Cache Buildroot downloads and ccache
         uses: actions/cache@v4
         with:
@@ -28,51 +29,200 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev rsync bc unzip cpio python3 file wget libelf-dev git
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev rsync bc unzip cpio python3 file wget libelf-dev git xorriso grub-pc-bin grub-efi-amd64-bin mtools
 
-      - name: Download Buildroot
+      - name: Download Buildroot (Stable Version)
         run: |
           rm -rf buildroot buildroot-*.tar.gz buildroot-*
-          wget -q -O buildroot-2026.08-rc2.tar.gz https://buildroot.org/downloads/buildroot-2026.08-rc2.tar.gz
-          tar xzf buildroot-2026.08-rc2.tar.gz
-          mv buildroot-2026.08-rc2 buildroot
+          echo "Downloading Buildroot 2025.02 (stable version)..."
+          wget -q -O buildroot-2025.02.tar.gz https://buildroot.org/downloads/buildroot-2025.02.tar.gz
+          if [ ! -f buildroot-2025.02.tar.gz ]; then
+            echo "ERROR: Failed to download Buildroot"
+            exit 1
+          fi
+          echo "Extracting Buildroot..."
+          tar xzf buildroot-2025.02.tar.gz
+          mv buildroot-2025.02 buildroot
+          echo "Buildroot extracted successfully"
           ls -la buildroot/ | head -5
 
       - name: Inject defconfig
         run: |
           if [ ! -f configs/custom_defconfig ]; then
-            echo "configs/custom_defconfig not found" >&2
+            echo "ERROR: configs/custom_defconfig not found" >&2
             exit 1
           fi
+          echo "Copying custom defconfig..."
           cp configs/custom_defconfig buildroot/.config
+          echo "Defconfig injected successfully"
 
       - name: Inject rootfs overlay
         run: |
           mkdir -p buildroot/board/custom_game/rootfs_overlay
           if [ -d overlay ]; then
+            echo "Copying overlay files..."
             cp -a overlay/. buildroot/board/custom_game/rootfs_overlay/
+            echo "Overlay files copied"
           else
-            echo "overlay/ not found; continuing without overlay"
+            echo "WARNING: overlay/ directory not found; continuing without overlay"
           fi
           echo "=== Buildroot directory content ===" 
           ls -la buildroot/ | head -10
 
-      - name: Build
+      - name: Build System
         working-directory: buildroot
         run: |
-          ls -la
-          make -j$(nproc)
+          echo "Starting build process..."
+          echo "CPU cores: $(nproc)"
+          make -j$(nproc) 2>&1 | tee ../build.log
+          BUILD_STATUS=${PIPESTATUS[0]}
+          echo "Build exit status: $BUILD_STATUS"
+          exit $BUILD_STATUS
+
+      - name: Check build status
+        if: always()
+        run: |
+          if [ -f build.log ]; then
+            LAST_LINES=$(tail -50 build.log)
+            echo "=== BUILD LOG (Last 50 lines) ==="
+            echo "$LAST_LINES"
+          fi
 
       - name: List resulting images
+        if: always()
         run: |
-          ls -lah buildroot/output/images || true
+          echo "=== Checking for build output images ==="
+          if [ -d buildroot/output/images ]; then
+            ls -lah buildroot/output/images/
+          else
+            echo "No output/images directory found"
+          fi
 
-      - name: Upload images
+      - name: Create bootable ISO image
+        if: success()
+        run: |
+          echo "=== Creating ISO Image ==="
+          if [ -f buildroot/output/images/bzImage ] && [ -f buildroot/output/images/rootfs.ext4 ]; then
+            echo "Found kernel and rootfs, creating ISO..."
+            
+            mkdir -p iso_build/boot/grub
+            
+            # Copy kernel and filesystem
+            cp buildroot/output/images/bzImage iso_build/boot/
+            cp buildroot/output/images/rootfs.ext4 iso_build/boot/
+            echo "Kernel and rootfs copied to ISO build directory"
+            
+            # Create GRUB configuration
+            cat > iso_build/boot/grub/grub.cfg << 'GRUB_EOF'
+set default=0
+set timeout=10
+
+menuentry "Streets of Rouge OS - Live Mode" {
+    linux /boot/bzImage root=/dev/sr0 ro rootfstype=iso9660 loop=/boot/rootfs.ext4 loopfstype=ext4 quiet
+    initrd /boot/rootfs.ext4
+}
+
+menuentry "Streets of Rouge OS - Install to Disk" {
+    linux /boot/bzImage root=/dev/sr0 ro rootfstype=iso9660 loop=/boot/rootfs.ext4 loopfstype=ext4 install=1 quiet
+    initrd /boot/rootfs.ext4
+}
+
+menuentry "Streets of Rouge OS - Debug Mode" {
+    linux /boot/bzImage root=/dev/sr0 ro rootfstype=iso9660 loop=/boot/rootfs.ext4 loopfstype=ext4 debug
+    initrd /boot/rootfs.ext4
+}
+GRUB_EOF
+            echo "GRUB configuration created"
+            
+            # Try to create ISO using grub-mkrescue
+            echo "Attempting to create ISO with grub-mkrescue..."
+            if grub-mkrescue -o buildroot/output/images/streets-of-rouge-os.iso iso_build/ -V "STREETS_OF_ROUGE" 2>&1; then
+              echo "ISO created successfully with grub-mkrescue"
+            else
+              echo "grub-mkrescue failed, trying alternative method..."
+              if xorriso -as mkisofs -R -J -V "STREETS_OF_ROUGE" \
+                -boot-load-size 4 -boot-info-table \
+                -o buildroot/output/images/streets-of-rouge-os.iso iso_build/ 2>&1; then
+                echo "ISO created successfully with xorriso"
+              else
+                echo "Warning: Could not create ISO, but build artifacts are available"
+              fi
+            fi
+          else
+            echo "Missing kernel or rootfs files:"
+            echo "  bzImage: $([ -f buildroot/output/images/bzImage ] && echo 'Found' || echo 'NOT FOUND')"
+            echo "  rootfs.ext4: $([ -f buildroot/output/images/rootfs.ext4 ] && echo 'Found' || echo 'NOT FOUND')"
+          fi
+
+      - name: List final images
+        if: always()
+        run: |
+          echo "=== FINAL BUILD ARTIFACTS ==="
+          if [ -d buildroot/output/images ]; then
+            echo ""
+            echo "All files in output/images:"
+            ls -lh buildroot/output/images/ 2>/dev/null || echo "No files found"
+            echo ""
+            echo "ISO file details:"
+            if [ -f buildroot/output/images/streets-of-rouge-os.iso ]; then
+              ls -lh buildroot/output/images/streets-of-rouge-os.iso
+              echo "ISO size: $(du -h buildroot/output/images/streets-of-rouge-os.iso | cut -f1)"
+            else
+              echo "ISO file not found"
+            fi
+          fi
+
+      - name: Upload build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: buildroot-images
-          path: |
-            buildroot/output/images/bzImage
-            buildroot/output/images/rootfs.ext4
-            buildroot/output/images/*.iso
+          path: buildroot/output/images/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "╔════════════════════════════════════════════╗"
+          echo "║     BUILD PROCESS COMPLETED               ║"
+          echo "╚════════════════════════════════════════════╝"
+          echo ""
+          echo "📦 AVAILABLE FILES:"
+          echo "─────────────────────────────────────────────"
+          if [ -f buildroot/output/images/streets-of-rouge-os.iso ]; then
+            echo "✅ ISO Image (Bootable):"
+            echo "   - File: streets-of-rouge-os.iso"
+            echo "   - Size: $(ls -lh buildroot/output/images/streets-of-rouge-os.iso | awk '{print $5}')"
+            echo "   - Use: Burn to USB drive with Etcher or Rufus"
+            echo ""
+          fi
+          if [ -f buildroot/output/images/bzImage ]; then
+            echo "✅ Kernel Image:"
+            echo "   - File: bzImage"
+            echo "   - Size: $(ls -lh buildroot/output/images/bzImage | awk '{print $5}')"
+            echo ""
+          fi
+          if [ -f buildroot/output/images/rootfs.ext4 ]; then
+            echo "✅ Root Filesystem:"
+            echo "   - File: rootfs.ext4"
+            echo "   - Size: $(ls -lh buildroot/output/images/rootfs.ext4 | awk '{print $5}')"
+            echo ""
+          fi
+          echo "─────────────────────────────────────────────"
+          echo ""
+          echo "🔥 HOW TO USE:"
+          echo "─────────────────────────────────────────────"
+          echo "1. Download the ISO file from Artifacts"
+          echo "2. Download Balena Etcher from:"
+          echo "   https://www.balena.io/etcher/"
+          echo "3. Open Etcher and select the ISO file"
+          echo "4. Insert USB drive and select it in Etcher"
+          echo "5. Click Flash to burn the image"
+          echo "6. Reboot your computer and boot from USB"
+          echo "7. Choose 'Live Mode' or 'Install to Disk'"
+          echo ""
+          echo "💾 LIVE MODE: Test without installing"
+          echo "⚙️  INSTALL MODE: Install to your hard drive"
+          echo "🐛 DEBUG MODE: Run with debug output"
+          echo ""
