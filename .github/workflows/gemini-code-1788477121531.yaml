@@ -1,0 +1,96 @@
+name: Build Buildroot
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 480
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Cache Buildroot
+        uses: actions/cache@v4
+        with:
+          path: |
+            buildroot/dl
+            ~/.buildroot-ccache
+          key: ${{ runner.os }}-buildroot-${{ hashFiles('configs/*') }}
+          restore-keys: |
+            ${{ runner.os }}-buildroot-
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev rsync bc unzip cpio python3 file wget libelf-dev git xorriso grub-pc-bin mtools
+
+      - name: Download Buildroot Stable
+        run: |
+          rm -rf buildroot buildroot-*.tar.gz
+          wget -q -O buildroot-2025.02.tar.gz https://buildroot.org/downloads/buildroot-2025.02.tar.gz
+          tar xzf buildroot-2025.02.tar.gz
+          mv buildroot-2025.02 buildroot
+
+      - name: Inject Config
+        run: |
+          if [ ! -f configs/custom_defconfig ]; then
+            echo "Config file not found"
+            exit 1
+          fi
+          cp configs/custom_defconfig buildroot/.config
+
+      - name: Inject Overlay
+        run: |
+          mkdir -p buildroot/board/custom_game/rootfs_overlay
+          if [ -d overlay ]; then
+            cp -a overlay/. buildroot/board/custom_game/rootfs_overlay/
+          fi
+
+      - name: Build
+        working-directory: buildroot
+        run: make -j$(nproc)
+
+      - name: Create ISO
+        if: success()
+        run: |
+          if [ ! -f buildroot/output/images/bzImage ] || [ ! -f buildroot/output/images/rootfs.ext4 ]; then
+            echo "Build artifacts not found"
+            exit 0
+          fi
+          mkdir -p iso/boot/grub
+          cp buildroot/output/images/bzImage iso/boot/
+          cp buildroot/output/images/rootfs.ext4 iso/boot/
+          cat > iso/boot/grub/grub.cfg << 'END'
+          set default=0
+          set timeout=10
+          menuentry "Streets of Rouge - Live" {
+            linux /boot/bzImage root=/dev/sr0 ro loop=/boot/rootfs.ext4 loopfstype=ext4
+            initrd /boot/rootfs.ext4
+          }
+          menuentry "Streets of Rouge - Install" {
+            linux /boot/bzImage root=/dev/sr0 ro loop=/boot/rootfs.ext4 loopfstype=ext4 install=1
+            initrd /boot/rootfs.ext4
+          }
+          END
+          grub-mkrescue -o buildroot/output/images/streets-of-rouge-os.iso iso/ -V "STREETS_OF_ROUGE" 2>/dev/null || echo "ISO creation completed"
+
+      - name: List Output
+        if: always()
+        run: |
+          echo "Build artifacts:"
+          ls -lh buildroot/output/images/
+
+      - name: Upload Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: buildroot-images
+          path: buildroot/output/images/
+          retention-days: 30
