@@ -46,7 +46,7 @@ jobs:
           echo "Buildroot extracted successfully"
           ls -la buildroot/ | head -5
 
-      - name: Inject defconfig
+      - name: Inject and Configure defconfig
         run: |
           if [ ! -f configs/custom_defconfig ]; then
             echo "ERROR: configs/custom_defconfig not found" >&2
@@ -54,7 +54,11 @@ jobs:
           fi
           echo "Copying custom defconfig..."
           cp configs/custom_defconfig buildroot/.config
-          echo "Defconfig injected successfully"
+          
+          echo "Expanding defconfig to full configuration..."
+          cd buildroot
+          make olddefconfig
+          echo "Defconfig injected and expanded successfully"
 
       - name: Inject rootfs overlay
         run: |
