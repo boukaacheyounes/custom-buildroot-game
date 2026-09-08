@@ -79,8 +79,8 @@ jobs:
           {
             printf "\n"
             printf "define MPV_FIX_WAF_ARGPARSE\n"
-            printf "\t\$(SED) \"s/type='string'/type=str/g\" \$(@D)/wscript\n"
-            printf "\t\$(SED) 's/type=\"string\"/type=str/g' \$(@D)/wscript\n"
+            printf "\t\$(SED) \"s/type[[:space:]]*=[[:space:]]*'string'/type=str/g\" \$(@D)/wscript\n"
+            printf "\t\$(SED) 's/type[[:space:]]*=[[:space:]]*\"string\"/type=str/g' \$(@D)/wscript\n"
             printf "endef\n"
             printf "MPV_POST_PATCH_HOOKS += MPV_FIX_WAF_ARGPARSE\n"
           } >> buildroot/package/mpv/mpv.mk
