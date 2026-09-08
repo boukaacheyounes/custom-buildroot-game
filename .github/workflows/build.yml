@@ -120,14 +120,14 @@ jobs:
           echo "=== Creating ISO Image ==="
           if [ -f buildroot/output/images/bzImage ] && [ -f buildroot/output/images/rootfs.ext4 ]; then
             echo "Found kernel and rootfs, creating ISO..."
-            
+
             mkdir -p iso_build/boot/grub
-            
+
             # Copy kernel and filesystem
             cp buildroot/output/images/bzImage iso_build/boot/
             cp buildroot/output/images/rootfs.ext4 iso_build/boot/
             echo "Kernel and rootfs copied to ISO build directory"
-            
+
             # Create GRUB configuration
             cat > iso_build/boot/grub/grub.cfg << 'GRUB_EOF'
             set default=0
@@ -147,9 +147,9 @@ jobs:
                 linux /boot/bzImage root=/dev/sr0 ro rootfstype=iso9660 loop=/boot/rootfs.ext4 loopfstype=ext4 debug
                 initrd /boot/rootfs.ext4
             }
-            GRUB_EOF
+          GRUB_EOF
             echo "GRUB configuration created"
-            
+
             # Try to create ISO using grub-mkrescue
             echo "Attempting to create ISO with grub-mkrescue..."
             if grub-mkrescue -o buildroot/output/images/streets-of-rouge-os.iso iso_build/ -V "STREETS_OF_ROUGE" 2>&1; then
@@ -169,7 +169,6 @@ jobs:
             echo "  bzImage: $([ -f buildroot/output/images/bzImage ] && echo 'Found' || echo 'NOT FOUND')"
             echo "  rootfs.ext4: $([ -f buildroot/output/images/rootfs.ext4 ] && echo 'Found' || echo 'NOT FOUND')"
           fi
-
       - name: List final images
         if: always()
         run: |
