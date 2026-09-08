@@ -54,12 +54,23 @@ jobs:
           fi
           echo "Copying custom defconfig..."
           cp configs/custom_defconfig buildroot/.config
-          
+
+          echo "=== Disabling mpv and all its sub-options ==="
+          sed -i '/^BR2_PACKAGE_MPV/d' buildroot/.config
+          echo "# BR2_PACKAGE_MPV is not set" >> buildroot/.config
+
           echo "Expanding defconfig to full configuration..."
           cd buildroot
           make olddefconfig
           echo "Defconfig injected and expanded successfully"
 
+          echo "=== Verifying mpv is disabled ==="
+          if grep -q "^BR2_PACKAGE_MPV=y" .config; then
+            echo "WARNING: mpv is still enabled! Something else in your config selects it."
+            grep -B5 "BR2_PACKAGE_MPV" .config
+          else
+            echo "OK: mpv is fully disabled."
+          fi
       - name: Inject rootfs overlay
         run: |
           mkdir -p buildroot/board/custom_game/rootfs_overlay
@@ -73,21 +84,7 @@ jobs:
           echo "=== Buildroot directory content ===" 
           ls -la buildroot/ | head -10
 
-      - name: Patch mpv for Python 3.12+ compatibility
-        run: |
-          echo "Adding post-patch hook to fix mpv's waf/argparse incompatibility..."
-          {
-            printf "\n"
-            printf "define MPV_FIX_WAF_ARGPARSE\n"
-            printf "\t\$(SED) \"s/type[[:space:]]*=[[:space:]]*'string'/type=str/g\" \$(@D)/wscript\n"
-            printf "\t\$(SED) 's/type[[:space:]]*=[[:space:]]*\"string\"/type=str/g' \$(@D)/wscript\n"
-            printf "\t\$(SED) 's/group[[:space:]]*=[[:space:]]*opt\.get_option_group(\([^)]*\))/group = opt.get_option_group(\1) or opt.add_option_group(\1)/' \$(@D)/wscript\n"
-            printf "endef\n"
-            printf "MPV_POST_PATCH_HOOKS += MPV_FIX_WAF_ARGPARSE\n"
-          } >> buildroot/package/mpv/mpv.mk
-          echo "=== Appended hook (tabs shown as ^I) ==="
-          tail -n 7 buildroot/package/mpv/mpv.mk | cat -A
-
+      
       - name: Build System
         working-directory: buildroot
         run: |
