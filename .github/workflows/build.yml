@@ -81,11 +81,12 @@ jobs:
             printf "define MPV_FIX_WAF_ARGPARSE\n"
             printf "\t\$(SED) \"s/type[[:space:]]*=[[:space:]]*'string'/type=str/g\" \$(@D)/wscript\n"
             printf "\t\$(SED) 's/type[[:space:]]*=[[:space:]]*\"string\"/type=str/g' \$(@D)/wscript\n"
+            printf "\t\$(SED) 's/group[[:space:]]*=[[:space:]]*opt\.get_option_group(\([^)]*\))/group = opt.get_option_group(\1) or opt.add_option_group(\1)/' \$(@D)/wscript\n"
             printf "endef\n"
             printf "MPV_POST_PATCH_HOOKS += MPV_FIX_WAF_ARGPARSE\n"
           } >> buildroot/package/mpv/mpv.mk
           echo "=== Appended hook (tabs shown as ^I) ==="
-          tail -n 6 buildroot/package/mpv/mpv.mk | cat -A
+          tail -n 7 buildroot/package/mpv/mpv.mk | cat -A
 
       - name: Build System
         working-directory: buildroot
