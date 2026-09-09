@@ -64,7 +64,7 @@ jobs:
           {
             echo "BR2_TARGET_ROOTFS_EXT2=y"
             echo "BR2_TARGET_ROOTFS_EXT2_4=y"
-            echo 'BR2_TARGET_ROOTFS_EXT2_SIZE="150%"'
+            echo 'BR2_TARGET_ROOTFS_EXT2_SIZE="800M"'
           } >> buildroot/.config
 
           echo "Expanding defconfig to full configuration..."
