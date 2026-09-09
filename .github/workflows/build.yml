@@ -59,17 +59,30 @@ jobs:
           sed -i '/^BR2_PACKAGE_MPV/d' buildroot/.config
           echo "# BR2_PACKAGE_MPV is not set" >> buildroot/.config
 
+          echo "=== Enabling ext4 rootfs image (required for the bootable ISO) ==="
+          sed -i '/^BR2_TARGET_ROOTFS_EXT2/d' buildroot/.config
+          {
+            echo "BR2_TARGET_ROOTFS_EXT2=y"
+            echo "BR2_TARGET_ROOTFS_EXT2_4=y"
+            echo 'BR2_TARGET_ROOTFS_EXT2_SIZE="150%"'
+          } >> buildroot/.config
+
           echo "Expanding defconfig to full configuration..."
           cd buildroot
           make olddefconfig
           echo "Defconfig injected and expanded successfully"
 
-          echo "=== Verifying mpv is disabled ==="
+          echo "=== Verifying final configuration ==="
           if grep -q "^BR2_PACKAGE_MPV=y" .config; then
             echo "WARNING: mpv is still enabled! Something else in your config selects it."
             grep -B5 "BR2_PACKAGE_MPV" .config
           else
-            echo "OK: mpv is fully disabled."
+            echo "OK: mpv is disabled."
+          fi
+          if grep -q "^BR2_TARGET_ROOTFS_EXT2_4=y" .config; then
+            echo "OK: ext4 rootfs image is enabled."
+          else
+            echo "WARNING: ext4 rootfs image is NOT enabled — check for conflicting filesystem options."
           fi
       - name: Inject rootfs overlay
         run: |
