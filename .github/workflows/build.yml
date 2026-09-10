@@ -73,6 +73,7 @@ jobs:
           CONFIG_BLK_DEV_RAM=y
           CONFIG_BLK_DEV_RAM_COUNT=1
           CONFIG_BLK_DEV_RAM_SIZE=1048576
+          CONFIG_BLK_DEV_INITRD=y
           CONFIG_EXT4_FS=y
           KCFG_EOF
           sed -i '/^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES/d' buildroot/.config
